@@ -1,0 +1,27 @@
+services:
+  voice-service:
+    build:
+      context: ./voice-service
+    container_name: wakeup-voice-service
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    expose:
+      - "8766"
+    ports:
+      - "127.0.0.1:${VOICE_SERVICE_PORT:-8766}:8766"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_VOICE_WS_URL: ${VITE_VOICE_WS_URL:-}
+    container_name: wakeup-frontend
+    restart: unless-stopped
+    depends_on:
+      - voice-service
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"

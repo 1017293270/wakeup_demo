@@ -168,6 +168,11 @@ const audioFrames: ArrayBuffer[] = []
 let volumeTimer: number | undefined
 let microphoneStreaming = false
 
+function getDefaultVoiceWsUrl() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws`
+}
+
 function computeVolume(frame: ArrayBuffer): number {
   const view = new Int16Array(frame)
   let sumSquares = 0
@@ -595,7 +600,7 @@ async function startListening() {
   try {
     voiceSocket = useVoiceSocket(
       {
-        wsUrl: import.meta.env.VITE_VOICE_WS_URL || 'ws://127.0.0.1:8766/ws',
+        wsUrl: import.meta.env.VITE_VOICE_WS_URL || getDefaultVoiceWsUrl(),
         wakeWords: [],
         sampleRate: 16000
       },
