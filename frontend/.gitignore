@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.pid
+*.log
+*.tsbuildinfo
+test-results/
+*.png
+!public/robot/robots/*.png
+.vite-dev.*
+.dev-server.*

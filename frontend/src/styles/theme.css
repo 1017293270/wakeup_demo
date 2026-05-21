@@ -1,0 +1,109 @@
+:root {
+  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+  color: #ffffff;
+  background: #070a0f;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --color-bg: #070a0f;
+  --color-panel: rgba(8, 14, 24, 0.74);
+  --color-panel-strong: rgba(10, 18, 31, 0.94);
+  --color-border: rgba(219, 231, 255, 0.16);
+  --color-text: #ffffff;
+  --color-muted: #b4c0d8;
+  --color-soft: #718096;
+  --color-blue: #4d8dff;
+  --color-cyan: #56f0ff;
+  --color-gold: #f7c873;
+  --color-emerald: #7cffc8;
+  --color-danger: #ff6b82;
+  --color-purple: #9b6bff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.eyebrow {
+  color: var(--color-gold);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.screen-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(247, 200, 115, 0.34);
+  border-radius: 8px;
+  color: #ffffff;
+  text-decoration: none;
+  background: rgba(247, 200, 115, 0.12);
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.screen-link:hover,
+.screen-link:focus-visible {
+  border-color: rgba(247, 200, 115, 0.72);
+  background: rgba(247, 200, 115, 0.2);
+}
+
+.screen-link:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 3px;
+}
+
+.full-control {
+  width: 100%;
+}
+
+.muted-text {
+  color: var(--color-muted);
+}
+
+.ant-form-item-label > label,
+.ant-table,
+.ant-modal,
+.ant-input,
+.ant-input-number,
+.ant-select-selector,
+.ant-input-number-input,
+.ant-slider-mark-text {
+  color: var(--color-text);
+}
+
+.ant-input,
+.ant-input-number,
+.ant-select-selector,
+.ant-input-number-input,
+.ant-input-affix-wrapper,
+.ant-picker {
+  background: rgba(11, 16, 32, 0.78) !important;
+  border-color: rgba(168, 179, 199, 0.28) !important;
+}
+
+.ant-table-wrapper .ant-table,
+.ant-table-wrapper .ant-table-thead > tr > th,
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  background: rgba(11, 16, 32, 0.56);
+  color: var(--color-text);
+  border-color: rgba(168, 179, 199, 0.16);
+}

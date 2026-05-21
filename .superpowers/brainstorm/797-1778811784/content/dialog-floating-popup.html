@@ -1,0 +1,67 @@
+<h2>悬浮小弹窗 + 数字人同屏</h2>
+<p class="subtitle">弹窗不影响数字人展示，保持大屏整体可见</p>
+
+<div class="mockup">
+  <div class="mockup-header">对话弹窗模式 — 悬浮于大屏之上</div>
+  <div class="mockup-body" style="background:#0a0e17;padding:0;min-height:400px;position:relative;overflow:hidden">
+    <!-- Full dashboard visible -->
+    <div style="position:absolute;inset:0;display:grid;grid-template-columns:200px 1fr 200px;grid-template-rows:40px 1fr 40px;gap:6px;padding:6px">
+      <div style="grid-column:1/4;background:#1e293b;border-radius:4px;display:flex;align-items:center;padding:0 12px"><span style="font-size:11px;color:#64748b">AI Native Voice Command Center</span></div>
+      <div style="background:#1e293b;border-radius:4px"></div>
+      <div style="background:#1e293b;border-radius:4px;display:flex;align-items:center;justify-content:center"><span style="font-size:24px">🤖</span></div>
+      <div style="background:#1e293b;border-radius:4px"></div>
+      <div style="grid-column:1/4;background:#1e293b;border-radius:4px"></div>
+    </div>
+
+    <!-- Floating dialog in bottom-right corner, overlapping dashboard -->
+    <div style="position:absolute;bottom:60px;right:20px;width:380px;background:#111827;border:1px solid #3b82f6;border-radius:12px;box-shadow:0 8px 32px rgba(59,130,246,0.15),0 2px 8px rgba(0,0,0,0.4);overflow:hidden;z-index:10">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:linear-gradient(135deg,#1e3a5f,#111827);border-bottom:1px solid #334155">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:#059669;box-shadow:0 0 6px #059669"></div>
+          <span style="font-size:13px;font-weight:600;color:#f1f5f9">AI 对话</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:16px;color:#64748b;cursor:pointer" title="最小化">−</span>
+          <span style="font-size:16px;color:#64748b;cursor:pointer" title="关闭">×</span>
+        </div>
+      </div>
+      <!-- Messages -->
+      <div style="height:180px;padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;background:#0f172a">
+        <div style="align-self:flex-end;background:#3b82f6;color:#fff;padding:8px 12px;border-radius:12px 12px 2px 12px;max-width:85%;font-size:12px;line-height:1.4">今天销售数据怎么样？</div>
+        <div style="align-self:flex-start;background:#1e293b;color:#e2e8f0;padding:8px 12px;border-radius:12px 12px 12px 2px;max-width:90%;font-size:12px;line-height:1.4">今日总销售额 ¥128,500，较昨日增长 12.3%。主要增长来自华东区域，新客户转化率达到 8.2%。</div>
+        <div style="align-self:flex-end;background:#3b82f6;color:#fff;padding:8px 12px;border-radius:12px 12px 2px 12px;max-width:85%;font-size:12px;line-height:1.4">华东区域哪个城市表现最好？</div>
+        <div style="align-self:flex-start;background:#1e293b;color:#e2e8f0;padding:8px 12px;border-radius:12px 12px 12px 2px;max-width:90%;font-size:12px;line-height:1.4">上海地区贡献了华东区域的 45%，其次是杭州和南京。</div>
+      </div>
+      <!-- Input -->
+      <div style="padding:10px 14px;border-top:1px solid #1e293b;display:flex;gap:8px;align-items:center">
+        <div style="flex:1;background:#0f172a;border:1px solid #334155;border-radius:20px;padding:8px 14px;color:#64748b;font-size:12px">语音/文字输入...</div>
+        <button style="background:#3b82f6;color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:12px;cursor:pointer">发送</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:16px">
+  <div class="option" data-choice="right" onclick="toggleSelect(this)">
+    <div class="letter">R</div>
+    <div class="content">
+      <h3>右下角（默认）</h3>
+      <p>弹窗位于右下角，不遮挡中间数字人。适合大屏场景。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="left" onclick="toggleSelect(this)">
+    <div class="letter">L</div>
+    <div class="content">
+      <h3>左下角</h3>
+      <p>弹窗位于左下角，与右侧事件流分开，视觉更平衡。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="drag" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>可拖拽位置</h3>
+      <p>弹窗可拖动到任意位置，默认右下角，用户可自由调整。</p>
+    </div>
+  </div>
+</div>

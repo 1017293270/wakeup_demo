@@ -1,0 +1,52 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "robot.moc3",
+		"Textures": [
+			"robots/texture_00.png"
+		],
+		"Physics": "robot.physics3.json",
+		"DisplayInfo": "robot.cdi3.json",
+		"Expressions": [
+			{
+				"Name": "expression1",
+				"File": "zui.exp3.json"
+			},
+			{
+				"Name": "expression2",
+				"File": "zui2.exp3.json"
+			}
+		],
+		"Motions": {
+			"Start": [
+				{
+				  "File": "Scene1.motion3.json",
+				  "Command": "motions disable Idle",
+				  "PostCommand": "motions enable Idle:Idle"
+				},
+				{
+					"File": "zuoyou1.motion3.json",
+					"Command": "motions disable Idle",
+					"PostCommand": "motions enable Idle:Idle"
+				  }
+		
+			  ]
+		  }
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		}
+	],
+	"HitAreas": []
+}
