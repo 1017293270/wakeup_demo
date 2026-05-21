@@ -4,6 +4,7 @@ TTS（文字转语音）服务
 支持高质量中文语音合成，无需 API 密钥
 """
 import asyncio
+import base64
 import logging
 import os
 import tempfile
@@ -138,3 +139,14 @@ class TTSService:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
             raise e
+
+    async def speak_to_data_url(self, text: str) -> str:
+        """Synthesize speech and return an MP3 data URL for browser playback."""
+        tmp_path = await self.speak_to_file(text)
+        try:
+            with open(tmp_path, "rb") as file:
+                encoded = base64.b64encode(file.read()).decode("ascii")
+            return f"data:audio/mp3;base64,{encoded}"
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)

@@ -62,10 +62,6 @@ def check_dependencies():
         import edge_tts  # noqa
     except ImportError:
         missing.append("edge-tts")
-    try:
-        import pyaudio  # noqa
-    except ImportError:
-        missing.append("pyaudio (Windows: pip install pipwin && pipwin install pyaudio)")
     if missing:
         print("缺少以下依赖，请先安装：")
         for dep in missing:

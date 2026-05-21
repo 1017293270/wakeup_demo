@@ -19,8 +19,8 @@ export function useVoiceSocket(config: VoiceGatewayConfig, handlers: VoiceSocket
 
     ws.onopen = () => {
       connected = true
-      handlers.onOpen?.()
       sendAction('startService')
+      handlers.onOpen?.()
     }
 
     ws.onmessage = (message) => {
@@ -72,6 +72,12 @@ export function useVoiceSocket(config: VoiceGatewayConfig, handlers: VoiceSocket
     sendAction('voiceInput', { audio: base64Audio })
   }
 
+  function sendFrame(frame: ArrayBuffer) {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(frame)
+    }
+  }
+
   function stop() {
     clearTimeout(reconnectTimer)
     ws?.close()
@@ -87,6 +93,7 @@ export function useVoiceSocket(config: VoiceGatewayConfig, handlers: VoiceSocket
     synthesize,
     sendText,
     sendAudio,
+    sendFrame,
     get connected() {
       return connected
     }

@@ -36,6 +36,14 @@ export function useMicrophoneStream(targetSampleRate = 16000) {
     let processor = null;
     let stream = null;
     async function start(onFrame) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            const msg = '当前浏览器不支持麦克风访问。请使用 Chrome/Edge/Firefox 最新版';
+            throw new Error(msg);
+        }
+        if (!window.isSecureContext) {
+            const msg = '麦克风需要安全上下文。请通过 HTTPS 或 localhost 访问此页面';
+            throw new Error(msg);
+        }
         stream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 echoCancellation: true,

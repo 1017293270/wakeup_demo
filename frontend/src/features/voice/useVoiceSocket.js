@@ -8,8 +8,8 @@ export function useVoiceSocket(config, handlers) {
         ws.binaryType = 'arraybuffer';
         ws.onopen = () => {
             connected = true;
-            handlers.onOpen?.();
             sendAction('startService');
+            handlers.onOpen?.();
         };
         ws.onmessage = (message) => {
             if (typeof message.data !== 'string')
@@ -53,6 +53,11 @@ export function useVoiceSocket(config, handlers) {
     function sendAudio(base64Audio) {
         sendAction('voiceInput', { audio: base64Audio });
     }
+    function sendFrame(frame) {
+        if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(frame);
+        }
+    }
     function stop() {
         clearTimeout(reconnectTimer);
         ws?.close();
@@ -67,6 +72,7 @@ export function useVoiceSocket(config, handlers) {
         synthesize,
         sendText,
         sendAudio,
+        sendFrame,
         get connected() {
             return connected;
         }

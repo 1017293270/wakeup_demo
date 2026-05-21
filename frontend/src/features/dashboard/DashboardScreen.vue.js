@@ -9,6 +9,7 @@ import FloatingChatDialog from '../../components/business/FloatingChatDialog.vue
 import KpiGrid from './components/KpiGrid.vue';
 import { kpis, latencyBuckets, qualityRows, wakeTrend, wakeWordDistribution } from './mockDashboardData';
 import { useVoiceSocket } from '../voice/useVoiceSocket';
+import { useMicrophoneStream } from '../voice/useMicrophoneStream';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { getConfig } from '../../services/configApi';
 import { defaultWakeConfig } from '../config/configSchema';
@@ -20,6 +21,133 @@ let voiceSocket = null;
 let timer = 0;
 let recognizingTimer = 0;
 let activeSpeechAudio = null;
+// Push-to-talk recording state
+const mic = useMicrophoneStream(16000);
+const recording = ref(false);
+const recordingVolume = ref(0);
+const audioFrames = [];
+let volumeTimer;
+let microphoneStreaming = false;
+function computeVolume(frame) {
+    const view = new Int16Array(frame);
+    let sumSquares = 0;
+    for (let i = 0; i < view.length; i++) {
+        const normalized = view[i] / 32768;
+        sumSquares += normalized * normalized;
+    }
+    const rms = Math.sqrt(sumSquares / view.length);
+    return Math.min(1, rms * 5); // amplify and clamp to 0-1
+}
+function startRecording() {
+    if (recording.value)
+        return;
+    audioFrames.length = 0;
+    recording.value = true;
+    recordingVolume.value = 0;
+    voice.hint = '输入中...';
+    if (microphoneStreaming)
+        return;
+    mic.start((frame) => {
+        voiceSocket?.sendFrame(frame);
+        if (recording.value) {
+            audioFrames.push(frame.slice(0));
+            recordingVolume.value = computeVolume(frame);
+        }
+    }).catch((err) => {
+        console.error('[PTT] 麦克风启动失败:', err);
+        recording.value = false;
+        voice.hint = '';
+        const detail = err instanceof Error ? err.message : String(err);
+        voice.pushEvent('error', `麦克风失败: ${detail}`);
+    });
+}
+function stopRecording() {
+    if (!recording.value)
+        return;
+    recording.value = false;
+    recordingVolume.value = 0;
+    voice.hint = '';
+    if (!microphoneStreaming)
+        mic.stop();
+    if (audioFrames.length === 0) {
+        voice.pushEvent('standby', '未录制到音频，请重试');
+        return;
+    }
+    // Concatenate all audio frames
+    const totalLength = audioFrames.reduce((acc, frame) => acc + frame.byteLength, 0);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const frame of audioFrames) {
+        combined.set(new Uint8Array(frame), offset);
+        offset += frame.byteLength;
+    }
+    // Trim leading/trailing silence and normalize
+    const samples = new Int16Array(combined.buffer);
+    const SILENCE_THRESHOLD = 200; // 16-bit amplitude threshold
+    // Find first non-silent sample
+    let start = 0;
+    while (start < samples.length && Math.abs(samples[start]) < SILENCE_THRESHOLD)
+        start++;
+    // Find last non-silent sample
+    let end = samples.length - 1;
+    while (end > start && Math.abs(samples[end]) < SILENCE_THRESHOLD)
+        end--;
+    // Keep some padding (100ms at 16kHz = 1600 samples)
+    start = Math.max(0, start - 800);
+    end = Math.min(samples.length - 1, end + 800);
+    const trimmed = samples.slice(start, end + 1);
+    // Normalize volume (peak to 80%)
+    let peak = 0;
+    for (let i = 0; i < trimmed.length; i++) {
+        const abs = Math.abs(trimmed[i]);
+        if (abs > peak)
+            peak = abs;
+    }
+    if (peak > 0 && peak < 8000) {
+        const gain = Math.min(26000 / peak, 4.0); // max 4x boost
+        for (let i = 0; i < trimmed.length; i++) {
+            const v = trimmed[i] * gain;
+            trimmed[i] = Math.max(-32768, Math.min(32767, Math.round(v)));
+        }
+    }
+    const processed = new Uint8Array(trimmed.buffer);
+    // Convert to base64
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < processed.byteLength; i += chunkSize) {
+        const chunk = processed.subarray(i, Math.min(i + chunkSize, processed.byteLength));
+        for (let j = 0; j < chunk.length; j++) {
+            binary += String.fromCharCode(chunk[j]);
+        }
+    }
+    const base64 = btoa(binary);
+    const durationSec = (trimmed.length / 16000).toFixed(1);
+    console.log(`[PTT] 音频: ${durationSec}s, 原始=${(samples.length / 16000).toFixed(1)}s, 裁剪=${((start / 16000) * 1000).toFixed(0)}ms前/${(((samples.length - end) / 16000) * 1000).toFixed(0)}ms后, 峰值=${peak}`);
+    if (trimmed.length < 8000) { // less than 0.5s
+        voice.pushEvent('standby', '录音太短，请重试');
+        audioFrames.length = 0;
+        return;
+    }
+    voice.pushEvent('asr', '正在识别语音...');
+    voiceSocket?.sendAudio(base64);
+    audioFrames.length = 0;
+}
+function cancelRecording() {
+    if (!recording.value)
+        return;
+    recording.value = false;
+    recordingVolume.value = 0;
+    voice.hint = '';
+    if (!microphoneStreaming)
+        mic.stop();
+    audioFrames.length = 0;
+    voice.pushEvent('standby', '录音已取消');
+}
+// Expand state
+const dialogExpanded = ref(false);
+function toggleExpand() {
+    dialogExpanded.value = !dialogExpanded.value;
+}
 const DASHBOARD_DESIGN_WIDTH = 1920;
 const DASHBOARD_DESIGN_HEIGHT = 1080;
 const startLabel = computed(() => {
@@ -191,6 +319,7 @@ function playGatewayAudio(audio) {
     });
 }
 function handleGatewayEvent(event) {
+    console.log('[DEBUG] gateway event:', event.event, JSON.stringify(event.data));
     const hint = String(event.data.hint || '');
     if (hint)
         voice.hint = hint;
@@ -247,9 +376,13 @@ function handleGatewayEvent(event) {
     if (event.event === 'standby') {
         if (voice.state === 'stopped')
             return;
+        const reason = String(event.data.reason || '');
+        // greeting 完成后保持弹窗，只有超时或取消才关闭
+        if (reason === 'silence_timeout' || reason === 'cancelled') {
+            voice.conversationActive = false;
+            voice.setDialogVisible(false);
+        }
         voice.setState('listening');
-        voice.conversationActive = false;
-        voice.setDialogVisible(false);
         voice.pushEvent('standby', '已回到监听');
     }
     if (event.event === 'error') {
@@ -263,6 +396,32 @@ function handleGatewayEvent(event) {
         }
     }
 }
+async function startBrowserAudioStream() {
+    if (microphoneStreaming)
+        return;
+    microphoneStreaming = true;
+    try {
+        await mic.start((frame) => {
+            voiceSocket?.sendFrame(frame);
+            if (recording.value) {
+                audioFrames.push(frame.slice(0));
+                recordingVolume.value = computeVolume(frame);
+            }
+        });
+        voice.pushEvent('mic', 'Browser microphone stream started');
+    }
+    catch (error) {
+        microphoneStreaming = false;
+        const detail = error instanceof Error ? error.message : String(error);
+        voice.setError(detail);
+        voiceSocket?.stop();
+        voiceSocket = null;
+    }
+}
+function stopBrowserAudioStream() {
+    microphoneStreaming = false;
+    mic.stop();
+}
 async function startListening() {
     if (starting.value || voice.serviceOnline)
         return;
@@ -270,16 +429,18 @@ async function startListening() {
     voice.setState('connecting');
     try {
         voiceSocket = useVoiceSocket({
-            wsUrl: 'ws://127.0.0.1:8766/ws',
+            wsUrl: import.meta.env.VITE_VOICE_WS_URL || 'ws://127.0.0.1:8766/ws',
             wakeWords: [],
             sampleRate: 16000
         }, {
             onOpen: () => {
                 voice.serviceOnline = true;
                 voice.setState('listening');
+                void startBrowserAudioStream();
                 voice.pushEvent('ready', `语音服务已就绪，请说"${voice.wakeWord}"唤醒`);
             },
             onClose: () => {
+                stopBrowserAudioStream();
                 voice.serviceOnline = false;
                 if (voice.state !== 'stopped')
                     voice.setError('语音服务连接已断开');
@@ -298,6 +459,8 @@ async function startListening() {
 }
 function stopListening() {
     window.clearTimeout(recognizingTimer);
+    cancelRecording();
+    stopBrowserAudioStream();
     activeSpeechAudio?.pause();
     activeSpeechAudio = null;
     voiceSocket?.cancel();
@@ -317,11 +480,19 @@ function simulateWakeup() {
     window.clearTimeout(recognizingTimer);
     voiceSocket?.manualWakeup();
 }
+function forceShowDialog() {
+    voice.conversationActive = true;
+    voice.setDialogVisible(true);
+    voice.clearDialogMessages();
+    voice.addDialogMessage('assistant', '弹窗已打开，可以开始对话了。');
+    console.log('[DEBUG] dialog forced open, dialogVisible =', voice.dialogVisible);
+}
 function handleDialogSend(text) {
     voice.sendText(text);
     voiceSocket?.sendText(text);
 }
 function handleDialogClose() {
+    cancelRecording();
     voice.conversationActive = false;
     voice.setDialogVisible(false);
     voice.clearDialogMessages();
@@ -330,6 +501,7 @@ function handleDialogClose() {
     voice.pushEvent('standby', '对话已关闭，回到监听');
 }
 function handleDialogMinimize() {
+    cancelRecording();
     voice.setDialogVisible(false);
 }
 onMounted(async () => {
@@ -585,6 +757,11 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElement
     ...{ onClick: (__VLS_ctx.simulateWakeup) },
     ...{ class: "voice-control voice-control--secondary" },
 });
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (__VLS_ctx.forceShowDialog) },
+    ...{ class: "voice-control voice-control--secondary" },
+    ...{ style: {} },
+});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
     ...{ class: "dashboard-rail dashboard-rail--right" },
     'aria-label': "链路追踪",
@@ -665,27 +842,44 @@ for (const [step] of __VLS_getVForSourceType((__VLS_ctx.signalSteps))) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
     (step.detail);
 }
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ style: {} },
+});
+(__VLS_ctx.voice.dialogVisible);
+(__VLS_ctx.voice.state);
 /** @type {[typeof FloatingChatDialog, ]} */ ;
 // @ts-ignore
 const __VLS_49 = __VLS_asFunctionalComponent(FloatingChatDialog, new FloatingChatDialog({
     ...{ 'onClose': {} },
     ...{ 'onMinimize': {} },
+    ...{ 'onExpand': {} },
     ...{ 'onSend': {} },
+    ...{ 'onRecordStart': {} },
+    ...{ 'onRecordStop': {} },
+    ...{ 'onRecordCancel': {} },
     visible: (__VLS_ctx.voice.dialogVisible),
     online: (__VLS_ctx.voice.serviceOnline),
     disabled: (!__VLS_ctx.voice.serviceOnline),
     messages: (__VLS_ctx.voice.dialogMessages),
     isThinking: (__VLS_ctx.voice.isThinking),
+    expanded: (__VLS_ctx.dialogExpanded),
+    volumeLevel: (__VLS_ctx.recordingVolume),
 }));
 const __VLS_50 = __VLS_49({
     ...{ 'onClose': {} },
     ...{ 'onMinimize': {} },
+    ...{ 'onExpand': {} },
     ...{ 'onSend': {} },
+    ...{ 'onRecordStart': {} },
+    ...{ 'onRecordStop': {} },
+    ...{ 'onRecordCancel': {} },
     visible: (__VLS_ctx.voice.dialogVisible),
     online: (__VLS_ctx.voice.serviceOnline),
     disabled: (!__VLS_ctx.voice.serviceOnline),
     messages: (__VLS_ctx.voice.dialogMessages),
     isThinking: (__VLS_ctx.voice.isThinking),
+    expanded: (__VLS_ctx.dialogExpanded),
+    volumeLevel: (__VLS_ctx.recordingVolume),
 }, ...__VLS_functionalComponentArgsRest(__VLS_49));
 let __VLS_52;
 let __VLS_53;
@@ -697,7 +891,19 @@ const __VLS_56 = {
     onMinimize: (__VLS_ctx.handleDialogMinimize)
 };
 const __VLS_57 = {
+    onExpand: (__VLS_ctx.toggleExpand)
+};
+const __VLS_58 = {
     onSend: (__VLS_ctx.handleDialogSend)
+};
+const __VLS_59 = {
+    onRecordStart: (__VLS_ctx.startRecording)
+};
+const __VLS_60 = {
+    onRecordStop: (__VLS_ctx.stopRecording)
+};
+const __VLS_61 = {
+    onRecordCancel: (__VLS_ctx.cancelRecording)
 };
 var __VLS_51;
 /** @type {__VLS_StyleScopedClasses['dashboard-screen']} */ ;
@@ -726,6 +932,8 @@ var __VLS_51;
 /** @type {__VLS_StyleScopedClasses['voice-control--secondary']} */ ;
 /** @type {__VLS_StyleScopedClasses['voice-control']} */ ;
 /** @type {__VLS_StyleScopedClasses['voice-control--secondary']} */ ;
+/** @type {__VLS_StyleScopedClasses['voice-control']} */ ;
+/** @type {__VLS_StyleScopedClasses['voice-control--secondary']} */ ;
 /** @type {__VLS_StyleScopedClasses['dashboard-rail']} */ ;
 /** @type {__VLS_StyleScopedClasses['dashboard-rail--right']} */ ;
 /** @type {__VLS_StyleScopedClasses['quality-list']} */ ;
@@ -748,6 +956,12 @@ const __VLS_self = (await import('vue')).defineComponent({
             voice: voice,
             clockText: clockText,
             dashboardScale: dashboardScale,
+            recordingVolume: recordingVolume,
+            startRecording: startRecording,
+            stopRecording: stopRecording,
+            cancelRecording: cancelRecording,
+            dialogExpanded: dialogExpanded,
+            toggleExpand: toggleExpand,
             startLabel: startLabel,
             isStartDisabled: isStartDisabled,
             isStopDisabled: isStopDisabled,
@@ -759,6 +973,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             startListening: startListening,
             stopListening: stopListening,
             simulateWakeup: simulateWakeup,
+            forceShowDialog: forceShowDialog,
             handleDialogSend: handleDialogSend,
             handleDialogClose: handleDialogClose,
             handleDialogMinimize: handleDialogMinimize,

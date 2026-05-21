@@ -11,6 +11,7 @@ export const defaultWakeConfig = {
     explanation_words: {
         welcome: '欢迎使用语音唤醒数据大屏'
     },
+    asr_corrections: {},
     voice_ws_url: 'ws://127.0.0.1:8766/api/v1/voice/ws',
     dialog_service_root: 'http://101.43.17.8:7000/sz/pro_fastgpt/wechatyProjectFastgpt/callOnlyAskGptWorkflow',
     asr_engine: 'mock',

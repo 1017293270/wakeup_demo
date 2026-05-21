@@ -166,6 +166,7 @@ const recording = ref(false)
 const recordingVolume = ref(0)
 const audioFrames: ArrayBuffer[] = []
 let volumeTimer: number | undefined
+let microphoneStreaming = false
 
 function computeVolume(frame: ArrayBuffer): number {
   const view = new Int16Array(frame)
@@ -184,7 +185,9 @@ function startRecording() {
   recording.value = true
   recordingVolume.value = 0
   voice.hint = '输入中...'
+  if (microphoneStreaming) return
   mic.start((frame: ArrayBuffer) => {
+    voiceSocket?.sendFrame(frame)
     if (recording.value) {
       audioFrames.push(frame.slice(0))
       recordingVolume.value = computeVolume(frame)
@@ -203,7 +206,7 @@ function stopRecording() {
   recording.value = false
   recordingVolume.value = 0
   voice.hint = ''
-  mic.stop()
+  if (!microphoneStreaming) mic.stop()
 
   if (audioFrames.length === 0) {
     voice.pushEvent('standby', '未录制到音频，请重试')
@@ -282,7 +285,7 @@ function cancelRecording() {
   recording.value = false
   recordingVolume.value = 0
   voice.hint = ''
-  mic.stop()
+  if (!microphoneStreaming) mic.stop()
   audioFrames.length = 0
   voice.pushEvent('standby', '录音已取消')
 }
@@ -558,6 +561,32 @@ function handleGatewayEvent(event: GatewayEvent) {
   }
 }
 
+async function startBrowserAudioStream() {
+  if (microphoneStreaming) return
+  microphoneStreaming = true
+  try {
+    await mic.start((frame: ArrayBuffer) => {
+      voiceSocket?.sendFrame(frame)
+      if (recording.value) {
+        audioFrames.push(frame.slice(0))
+        recordingVolume.value = computeVolume(frame)
+      }
+    })
+    voice.pushEvent('mic', 'Browser microphone stream started')
+  } catch (error) {
+    microphoneStreaming = false
+    const detail = error instanceof Error ? error.message : String(error)
+    voice.setError(detail)
+    voiceSocket?.stop()
+    voiceSocket = null
+  }
+}
+
+function stopBrowserAudioStream() {
+  microphoneStreaming = false
+  mic.stop()
+}
+
 async function startListening() {
   if (starting.value || voice.serviceOnline) return
   starting.value = true
@@ -566,7 +595,7 @@ async function startListening() {
   try {
     voiceSocket = useVoiceSocket(
       {
-        wsUrl: 'ws://127.0.0.1:8766/ws',
+        wsUrl: import.meta.env.VITE_VOICE_WS_URL || 'ws://127.0.0.1:8766/ws',
         wakeWords: [],
         sampleRate: 16000
       },
@@ -574,9 +603,11 @@ async function startListening() {
         onOpen: () => {
           voice.serviceOnline = true
           voice.setState('listening')
+          void startBrowserAudioStream()
           voice.pushEvent('ready', `语音服务已就绪，请说"${voice.wakeWord}"唤醒`)
         },
         onClose: () => {
+          stopBrowserAudioStream()
           voice.serviceOnline = false
           if (voice.state !== 'stopped') voice.setError('语音服务连接已断开')
         },
@@ -596,6 +627,7 @@ async function startListening() {
 function stopListening() {
   window.clearTimeout(recognizingTimer)
   cancelRecording()
+  stopBrowserAudioStream()
   activeSpeechAudio?.pause()
   activeSpeechAudio = null
   voiceSocket?.cancel()
