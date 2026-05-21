@@ -6,6 +6,8 @@ ARG VITE_VOICE_WS_URL
 ENV VITE_VOICE_WS_URL=${VITE_VOICE_WS_URL}
 
 COPY package*.json ./
+COPY scripts ./scripts
+COPY public ./public
 RUN npm ci --registry=https://registry.npmmirror.com --no-audit --no-fund
 
 COPY . .
