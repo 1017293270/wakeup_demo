@@ -29,11 +29,17 @@ def _baidu_get_token(api_key: str, secret_key: str) -> str:
         return _BAIDU_TOKEN_CACHE["token"]
 
     t0 = time.time()
-    url = (
-        "https://openapi.baidu.com/oauth/2.0/token"
-        f"?grant_type=client_credentials&client_id={api_key}&client_secret={secret_key}"
+    resp = requests.get(
+        "https://openapi.baidu.com/oauth/2.0/token",
+        params={
+            "grant_type": "client_credentials",
+            "client_id": api_key,
+            "client_secret": secret_key,
+        },
+        timeout=10,
     )
-    resp = requests.get(url, timeout=10)
+    if resp.status_code == 401:
+        raise sr.RequestError("百度 ASR 鉴权失败：请检查 API Key / Secret Key 是否正确，且语音识别能力已开通")
     resp.raise_for_status()
     token = resp.json()["access_token"]
     elapsed = time.time() - t0
