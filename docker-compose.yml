@@ -9,9 +9,6 @@ services:
         required: false
     expose:
       - "8766"
-    environment:
-      VOICE_MYSQL_HOST: ${VOICE_MYSQL_HOST:-host.docker.internal}
-      VOICE_MYSQL_PORT: ${VOICE_MYSQL_PORT:-3306}
     ports:
       - "127.0.0.1:${VOICE_SERVICE_PORT:-8766}:8766"
     extra_hosts:
