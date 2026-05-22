@@ -1,12 +1,32 @@
 # Docker Deployment
 
-This project runs as three containers:
+This project runs as two application containers and uses the existing MySQL on the server:
 
-- `mysql`: MySQL 8.4 with persistent data in the `mysql-data` Docker volume.
 - `voice-service`: FastAPI HTTP API and WebSocket voice pipeline on port `8766`.
 - `frontend`: Nginx serves the built Vue app and proxies `/api/v1/*` and `/ws`.
+- MySQL: an existing host database, not managed by this Compose file.
 
-## 1. Prepare Environment Variables
+## 1. Prepare MySQL
+
+Create the database in the existing MySQL service:
+
+```sql
+CREATE DATABASE IF NOT EXISTS `wakeup_demo`
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+```
+
+Create or grant an application user:
+
+```sql
+CREATE USER IF NOT EXISTS 'wakeup_user'@'%' IDENTIFIED BY 'change_me';
+GRANT ALL PRIVILEGES ON `wakeup_demo`.* TO 'wakeup_user'@'%';
+FLUSH PRIVILEGES;
+```
+
+If you use an existing MySQL user, make sure it can connect from the Docker bridge network.
+
+## 2. Prepare Environment Variables
 
 Copy the example file:
 
@@ -17,11 +37,11 @@ cp .env.example .env
 Edit `.env` and fill in real values:
 
 ```env
-FRONTEND_PORT=8080
+FRONTEND_PORT=9080
 VOICE_SERVICE_PORT=8766
-MYSQL_PORT=3306
 
-MYSQL_ROOT_PASSWORD=change_root_password
+VOICE_MYSQL_HOST=host.docker.internal
+VOICE_MYSQL_PORT=3306
 VOICE_MYSQL_USER=wakeup_user
 VOICE_MYSQL_PASSWORD=change_me
 VOICE_MYSQL_DATABASE=wakeup_demo
@@ -35,22 +55,21 @@ VOICE_WORKFLOW_USERNAME=
 VOICE_WORKFLOW_PASSWORD=
 ```
 
+Use `VOICE_MYSQL_HOST=host.docker.internal` when MySQL runs on the same server as Docker.
+
 Do not commit `.env` to Git.
 
-## 2. Start Containers
+## 3. Start Containers
 
 ```bash
 docker compose up -d --build
 ```
-
-The MySQL container creates the database and user from `.env` on first startup.
 
 The voice service creates its own tables and default config after it connects to MySQL.
 
 Check logs:
 
 ```bash
-docker logs -f wakeup-mysql
 docker logs -f wakeup-voice-service
 docker logs -f wakeup-frontend
 ```
@@ -58,10 +77,10 @@ docker logs -f wakeup-frontend
 Open:
 
 ```text
-http://server-ip:8080
+http://server-ip:9080
 ```
 
-## 3. HTTPS and WebSocket
+## 4. HTTPS and WebSocket
 
 Browser microphone access requires HTTPS except on localhost.
 
@@ -70,7 +89,7 @@ In production, put Nginx, Caddy, a cloud load balancer, or another HTTPS reverse
 Proxy the public HTTPS site to:
 
 ```text
-http://127.0.0.1:8080
+http://127.0.0.1:9080
 ```
 
 The frontend uses the same origin by default:
@@ -90,28 +109,6 @@ After changing `VITE_VOICE_WS_URL`, rebuild the frontend:
 
 ```bash
 docker compose up -d --build frontend
-```
-
-## 4. Database Notes
-
-MySQL data persists in the Docker volume named `wakeup_demo_mysql-data`.
-
-Stop containers without deleting data:
-
-```bash
-docker compose down
-```
-
-Delete containers and MySQL data:
-
-```bash
-docker compose down -v
-```
-
-Connect to MySQL from the host:
-
-```bash
-mysql -h 127.0.0.1 -P 3306 -u wakeup_user -p wakeup_demo
 ```
 
 ## 5. Common Commands
