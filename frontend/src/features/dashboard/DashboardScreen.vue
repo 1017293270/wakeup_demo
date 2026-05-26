@@ -8,11 +8,25 @@
       <div class="screen-title">
         <span class="eyebrow">AI Native Voice Command Center</span>
         <h1>语音唤醒 AI 指挥舱</h1>
-        <p>Live2D 数字人实时接入唤醒、识别、对话和播报链路。</p>
+        <p>数字人实时接入唤醒、识别、对话和播报链路。</p>
       </div>
       <nav class="screen-actions" aria-label="大屏操作">
+        <RouterLink to="/chat" class="screen-link screen-link--chat">
+          <svg class="chat-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          进入对话
+        </RouterLink>
         <StatusBadge :text="voice.serviceOnline ? '语音服务在线' : '语音服务未连接'" :tone="voice.serviceOnline ? 'ok' : 'warn'" />
         <StatusBadge :text="clockText" tone="active" />
+        <button class="screen-link" @click="handleLogout">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          退出
+        </button>
         <RouterLink to="/config" class="screen-link" aria-label="配置中心">
           <svg class="settings-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -23,27 +37,8 @@
       </nav>
     </header>
 
-    <section class="command-layout">
-      <aside class="dashboard-rail dashboard-rail--left" aria-label="核心指标">
-        <DataPanel title="核心指标" meta="今日实时">
-          <KpiGrid :items="kpis" />
-        </DataPanel>
-
-        <DataPanel title="唤醒趋势" meta="24 小时">
-          <DashboardChartPanel :option="trendOption" />
-        </DataPanel>
-
-        <DataPanel title="响应时长分布" meta="P95 1.9s">
-          <DashboardChartPanel :option="latencyOption" />
-        </DataPanel>
-      </aside>
-
-      <section class="command-stage" aria-label="Live2D 数字人状态">
-        <div class="stage-metrics" aria-hidden="true">
-          <span>{{ stageMetric.label }}</span>
-          <strong>{{ stageMetric.value }}</strong>
-        </div>
-
+    <section class="command-layout command-layout--center">
+      <section class="command-stage command-stage--centered" aria-label="Live2D 数字人状态">
         <div class="stage-core">
           <Live2DAvatar :state="voice.state" />
         </div>
@@ -77,43 +72,12 @@
           </button>
         </div>
       </section>
-
-      <aside class="dashboard-rail dashboard-rail--right" aria-label="链路追踪">
-        <DataPanel title="唤醒词分布" meta="今日">
-          <DashboardChartPanel :option="pieOption" />
-        </DataPanel>
-
-        <DataPanel title="模型质量">
-          <div class="quality-list">
-            <div v-for="row in qualityRows" :key="row.label" :class="`quality-list__item--${row.status}`">
-              <span>{{ row.label }}</span>
-              <strong>{{ row.value }}</strong>
-            </div>
-          </div>
-        </DataPanel>
-
-        <DataPanel title="实时事件">
-          <VoiceEventStream :events="voice.events" />
-        </DataPanel>
-      </aside>
     </section>
-
-    <section class="signal-strip" aria-label="AI 执行链路">
-      <article v-for="step in signalSteps" :key="step.key" class="signal-step" :class="`signal-step--${step.state}`">
-        <span>{{ step.label }}</span>
-        <strong>{{ step.detail }}</strong>
-      </article>
-    </section>
-
-    <!-- DEBUG: 状态指示 -->
-    <div style="position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9999;background:rgba(0,0,0,0.8);color:#0f0;padding:8px 16px;border-radius:8px;font-size:12px;font-family:monospace">
-      dialogVisible: {{ voice.dialogVisible }} | state: {{ voice.state }}
-    </div>
 
     <FloatingChatDialog
       :visible="voice.dialogVisible"
       :online="voice.serviceOnline"
-      :disabled="!voice.serviceOnline"
+      :disabled="isDialogInputDisabled"
       :messages="voice.dialogMessages"
       :is-thinking="voice.isThinking"
       :expanded="dialogExpanded"
@@ -132,26 +96,24 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { EChartsOption } from 'echarts'
-import DataPanel from '../../components/ui/DataPanel.vue'
+import { useRouter } from 'vue-router'
+import { message } from 'ant-design-vue'
 import StatusBadge from '../../components/ui/StatusBadge.vue'
-import DashboardChartPanel from '../../components/business/DashboardChartPanel.vue'
 import Live2DAvatar from '../../components/business/Live2DAvatar.vue'
 import WakeStatusPanel from '../../components/business/WakeStatusPanel.vue'
-import VoiceEventStream from '../../components/business/VoiceEventStream.vue'
 import FloatingChatDialog from '../../components/business/FloatingChatDialog.vue'
-import KpiGrid from './components/KpiGrid.vue'
-import { kpis, latencyBuckets, qualityRows, wakeTrend, wakeWordDistribution } from './mockDashboardData'
 import { useVoiceSocket } from '../voice/useVoiceSocket'
 import { useMicrophoneStream } from '../voice/useMicrophoneStream'
 import { useVoiceStore } from '../../stores/voiceStore'
+import { useAuthStore } from '../../stores/authStore'
+import { logout as logoutApi } from '../../services/authApi'
 import type { GatewayEvent, VoiceState } from '../voice/voiceTypes'
 import { getConfig } from '../../services/configApi'
 import { defaultWakeConfig } from '../config/configSchema'
 
-type SignalStepState = 'idle' | 'active' | 'done' | 'error'
-
+const router = useRouter()
 const voice = useVoiceStore()
+const authStore = useAuthStore()
 const clockText = ref(formatClock())
 const starting = ref(false)
 const dashboardScale = ref(1)
@@ -160,13 +122,21 @@ let timer = 0
 let recognizingTimer = 0
 let activeSpeechAudio: HTMLAudioElement | null = null
 
-// Push-to-talk recording state
 const mic = useMicrophoneStream(16000)
 const recording = ref(false)
 const recordingVolume = ref(0)
 const audioFrames: ArrayBuffer[] = []
-let volumeTimer: number | undefined
 let microphoneStreaming = false
+
+const DASHBOARD_DESIGN_WIDTH = 1920
+const DASHBOARD_DESIGN_HEIGHT = 1080
+
+const dialogExpanded = ref(false)
+const isDialogInputDisabled = computed(() => !voice.serviceOnline || voice.isThinking)
+
+function toggleExpand() {
+  dialogExpanded.value = !dialogExpanded.value
+}
 
 function getDefaultVoiceWsUrl() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -181,23 +151,34 @@ function computeVolume(frame: ArrayBuffer): number {
     sumSquares += normalized * normalized
   }
   const rms = Math.sqrt(sumSquares / view.length)
-  return Math.min(1, rms * 5) // amplify and clamp to 0-1
+  return Math.min(1, rms * 5)
+}
+
+function shouldStreamWakeFrame(): boolean {
+  return voice.serviceOnline && !voice.conversationActive && !recording.value
+}
+
+function handleMicrophoneFrame(frame: ArrayBuffer) {
+  if (recording.value) {
+    audioFrames.push(frame.slice(0))
+    recordingVolume.value = computeVolume(frame)
+    return
+  }
+
+  if (shouldStreamWakeFrame()) {
+    voiceSocket?.sendFrame(frame)
+  }
 }
 
 function startRecording() {
+  if (voice.isThinking) return
   if (recording.value) return
   audioFrames.length = 0
   recording.value = true
   recordingVolume.value = 0
   voice.hint = '输入中...'
   if (microphoneStreaming) return
-  mic.start((frame: ArrayBuffer) => {
-    voiceSocket?.sendFrame(frame)
-    if (recording.value) {
-      audioFrames.push(frame.slice(0))
-      recordingVolume.value = computeVolume(frame)
-    }
-  }).catch((err) => {
+  mic.start(handleMicrophoneFrame).catch((err) => {
     console.error('[PTT] 麦克风启动失败:', err)
     recording.value = false
     voice.hint = ''
@@ -218,7 +199,6 @@ function stopRecording() {
     return
   }
 
-  // Concatenate all audio frames
   const totalLength = audioFrames.reduce((acc, frame) => acc + frame.byteLength, 0)
   const combined = new Uint8Array(totalLength)
   let offset = 0
@@ -227,31 +207,26 @@ function stopRecording() {
     offset += frame.byteLength
   }
 
-  // Trim leading/trailing silence and normalize
   const samples = new Int16Array(combined.buffer)
-  const SILENCE_THRESHOLD = 200 // 16-bit amplitude threshold
+  const SILENCE_THRESHOLD = 200
 
-  // Find first non-silent sample
   let start = 0
   while (start < samples.length && Math.abs(samples[start]) < SILENCE_THRESHOLD) start++
-  // Find last non-silent sample
   let end = samples.length - 1
   while (end > start && Math.abs(samples[end]) < SILENCE_THRESHOLD) end--
 
-  // Keep some padding (100ms at 16kHz = 1600 samples)
   start = Math.max(0, start - 800)
   end = Math.min(samples.length - 1, end + 800)
 
   const trimmed = samples.slice(start, end + 1)
 
-  // Normalize volume (peak to 80%)
   let peak = 0
   for (let i = 0; i < trimmed.length; i++) {
     const abs = Math.abs(trimmed[i])
     if (abs > peak) peak = abs
   }
   if (peak > 0 && peak < 8000) {
-    const gain = Math.min(26000 / peak, 4.0) // max 4x boost
+    const gain = Math.min(26000 / peak, 4.0)
     for (let i = 0; i < trimmed.length; i++) {
       const v = trimmed[i] * gain
       trimmed[i] = Math.max(-32768, Math.min(32767, Math.round(v)))
@@ -260,7 +235,6 @@ function stopRecording() {
 
   const processed = new Uint8Array(trimmed.buffer)
 
-  // Convert to base64
   let binary = ''
   const chunkSize = 8192
   for (let i = 0; i < processed.byteLength; i += chunkSize) {
@@ -274,13 +248,14 @@ function stopRecording() {
   const durationSec = (trimmed.length / 16000).toFixed(1)
   console.log(`[PTT] 音频: ${durationSec}s, 原始=${(samples.length / 16000).toFixed(1)}s, 裁剪=${((start / 16000) * 1000).toFixed(0)}ms前/${(((samples.length - end) / 16000) * 1000).toFixed(0)}ms后, 峰值=${peak}`)
 
-  if (trimmed.length < 8000) { // less than 0.5s
+  if (trimmed.length < 8000) {
     voice.pushEvent('standby', '录音太短，请重试')
     audioFrames.length = 0
     return
   }
 
   voice.pushEvent('asr', '正在识别语音...')
+  voice.setThinking(true)
   voiceSocket?.sendAudio(base64)
   audioFrames.length = 0
 }
@@ -292,18 +267,9 @@ function cancelRecording() {
   voice.hint = ''
   if (!microphoneStreaming) mic.stop()
   audioFrames.length = 0
+  voice.setThinking(false)
   voice.pushEvent('standby', '录音已取消')
 }
-
-// Expand state
-const dialogExpanded = ref(false)
-
-function toggleExpand() {
-  dialogExpanded.value = !dialogExpanded.value
-}
-
-const DASHBOARD_DESIGN_WIDTH = 1920
-const DASHBOARD_DESIGN_HEIGHT = 1080
 
 const startLabel = computed(() => {
   if (starting.value) return '启动中'
@@ -312,130 +278,6 @@ const startLabel = computed(() => {
 
 const isStartDisabled = computed(() => starting.value || voice.serviceOnline || ['connecting'].includes(voice.state))
 const isStopDisabled = computed(() => voice.state === 'idle' || voice.state === 'stopped')
-
-const stageMetric = computed(() => {
-  if (voice.state === 'error') return { label: '链路告警', value: '检查' }
-  if (voice.state === 'speaking') return { label: '本轮播报', value: 'TTS' }
-  if (voice.state === 'thinking') return { label: 'AI 生成', value: 'RUN' }
-  if (voice.state === 'wakeup' || voice.state === 'recognizing') return { label: '声纹命中', value: '0.94' }
-  return { label: '今日唤醒', value: '2,324' }
-})
-
-const signalSteps = computed(() => {
-  const order: VoiceState[] = ['wakeup', 'recognizing', 'thinking', 'speaking', 'listening']
-  const activeIndex = order.indexOf(voice.state)
-  const isError = voice.state === 'error'
-
-  return [
-    { key: 'wakeup', label: 'Wakeup', detail: '唤醒命中' },
-    { key: 'asr', label: 'ASR', detail: '语音转写' },
-    { key: 'dialog', label: 'Dialog', detail: '业务回答' },
-    { key: 'tts', label: 'TTS', detail: '语音播报' },
-    { key: 'standby', label: 'Standby', detail: '回到监听' }
-  ].map((step, index) => {
-    let state: SignalStepState = 'idle'
-    if (isError) state = index <= 3 ? 'error' : 'idle'
-    else if (activeIndex === index) state = 'active'
-    else if (activeIndex > index || voice.state === 'listening') state = 'done'
-    return { ...step, state }
-  })
-})
-
-const chartTextColor = '#dbe7ff'
-const axisStyle = { color: 'rgba(219, 231, 255, 0.18)' }
-const splitStyle = { color: 'rgba(219, 231, 255, 0.1)' }
-
-const trendOption = computed<EChartsOption>(() => ({
-  color: ['#56f0ff', '#f7c873'],
-  grid: { left: 38, right: 18, top: 30, bottom: 28 },
-  tooltip: {
-    trigger: 'axis',
-    backgroundColor: 'rgba(6, 10, 18, 0.94)',
-    borderColor: 'rgba(86, 240, 255, 0.32)',
-    textStyle: { color: '#fff' }
-  },
-  xAxis: {
-    type: 'category',
-    data: wakeTrend.hours,
-    axisLine: { lineStyle: axisStyle },
-    axisTick: { show: false },
-    axisLabel: { color: chartTextColor }
-  },
-  yAxis: {
-    type: 'value',
-    splitLine: { lineStyle: splitStyle },
-    axisLabel: { color: chartTextColor }
-  },
-  series: [
-    {
-      name: '唤醒',
-      type: 'line',
-      smooth: true,
-      showSymbol: false,
-      areaStyle: { opacity: 0.2 },
-      data: wakeTrend.wakeups
-    },
-    {
-      name: '对话',
-      type: 'line',
-      smooth: true,
-      showSymbol: false,
-      areaStyle: { opacity: 0.12 },
-      data: wakeTrend.dialogs
-    }
-  ]
-}))
-
-const pieOption = computed<EChartsOption>(() => ({
-  color: ['#56f0ff', '#f7c873', '#7cffc8', '#ff8aa0'],
-  tooltip: {
-    trigger: 'item',
-    backgroundColor: 'rgba(6, 10, 18, 0.94)',
-    borderColor: 'rgba(247, 200, 115, 0.28)',
-    textStyle: { color: '#fff' }
-  },
-  series: [
-    {
-      type: 'pie',
-      radius: ['54%', '74%'],
-      center: ['50%', '52%'],
-      label: { color: chartTextColor, formatter: '{b}\n{d}%' },
-      labelLine: { lineStyle: { color: 'rgba(219, 231, 255, 0.34)' } },
-      data: wakeWordDistribution
-    }
-  ]
-}))
-
-const latencyOption = computed<EChartsOption>(() => ({
-  color: ['#7cffc8'],
-  grid: { left: 36, right: 16, top: 20, bottom: 28 },
-  tooltip: {
-    trigger: 'axis',
-    backgroundColor: 'rgba(6, 10, 18, 0.94)',
-    borderColor: 'rgba(124, 255, 200, 0.3)',
-    textStyle: { color: '#fff' }
-  },
-  xAxis: {
-    type: 'category',
-    data: latencyBuckets.map((item) => item.name),
-    axisLine: { lineStyle: axisStyle },
-    axisTick: { show: false },
-    axisLabel: { color: chartTextColor }
-  },
-  yAxis: {
-    type: 'value',
-    splitLine: { lineStyle: splitStyle },
-    axisLabel: { color: chartTextColor }
-  },
-  series: [
-    {
-      type: 'bar',
-      barWidth: 18,
-      itemStyle: { borderRadius: [8, 8, 2, 2] },
-      data: latencyBuckets.map((item) => item.value)
-    }
-  ]
-}))
 
 function formatClock() {
   return new Date().toLocaleString('zh-CN', { hour12: false })
@@ -500,6 +342,7 @@ function handleGatewayEvent(event: GatewayEvent) {
     voice.conversationActive = true
     voice.setDialogVisible(true)
     voice.clearDialogMessages()
+    voice.setThinking(false)
     voice.pushEvent('wakeup', `唤醒成功：${wakeWord}`)
   }
 
@@ -509,6 +352,7 @@ function handleGatewayEvent(event: GatewayEvent) {
     voice.hint = ''
     voice.pushEvent('asr', voice.transcript || '语音转写完成')
     voice.addDialogMessage('user', voice.transcript)
+    voice.setThinking(true)
     scheduleThinkingState()
   }
 
@@ -518,6 +362,7 @@ function handleGatewayEvent(event: GatewayEvent) {
     voice.answer = answer
     voice.hint = ''
     voice.setState('speaking')
+    voice.setThinking(false)
     voice.pushEvent('dialog', answer || '业务回答已生成')
     voice.addDialogMessage('assistant', answer)
   }
@@ -542,9 +387,9 @@ function handleGatewayEvent(event: GatewayEvent) {
   }
 
   if (event.event === 'standby') {
+    voice.setThinking(false)
     if (voice.state === 'stopped') return
     const reason = String((event.data as { reason?: string }).reason || '')
-    // greeting 完成后保持弹窗，只有超时或取消才关闭
     if (reason === 'silence_timeout' || reason === 'cancelled') {
       voice.conversationActive = false
       voice.setDialogVisible(false)
@@ -554,6 +399,7 @@ function handleGatewayEvent(event: GatewayEvent) {
   }
 
   if (event.event === 'error') {
+    voice.setThinking(false)
     voice.setError(String((event.data as { message?: string }).message || '语音服务错误'))
   }
 
@@ -570,13 +416,7 @@ async function startBrowserAudioStream() {
   if (microphoneStreaming) return
   microphoneStreaming = true
   try {
-    await mic.start((frame: ArrayBuffer) => {
-      voiceSocket?.sendFrame(frame)
-      if (recording.value) {
-        audioFrames.push(frame.slice(0))
-        recordingVolume.value = computeVolume(frame)
-      }
-    })
+    await mic.start(handleMicrophoneFrame)
     voice.pushEvent('mic', 'Browser microphone stream started')
   } catch (error) {
     microphoneStreaming = false
@@ -640,14 +480,11 @@ function stopListening() {
   voiceSocket = null
   voice.serviceOnline = false
   voice.conversationActive = false
+  voice.setThinking(false)
   voice.setDialogVisible(false)
   voice.clearDialogMessages()
   voice.setState('stopped')
   voice.pushEvent('stop', '监听已停止')
-}
-
-async function loginDialogWorkflow() {
-  // voice-service 后端自动处理登录，无需前端调用
 }
 
 function simulateWakeup() {
@@ -664,13 +501,16 @@ function forceShowDialog() {
 }
 
 function handleDialogSend(text: string) {
+  if (isDialogInputDisabled.value) return
   voice.sendText(text)
+  voice.setThinking(true)
   voiceSocket?.sendText(text)
 }
 
 function handleDialogClose() {
   cancelRecording()
   voice.conversationActive = false
+  voice.setThinking(false)
   voice.setDialogVisible(false)
   voice.clearDialogMessages()
   voiceSocket?.cancel()
@@ -683,8 +523,18 @@ function handleDialogMinimize() {
   voice.setDialogVisible(false)
 }
 
+async function handleLogout() {
+  try {
+    await logoutApi()
+  } catch {
+    // Logout API call failure is non-critical
+  }
+  stopListening()
+  authStore.clearAuth()
+  router.push('/login')
+}
+
 onMounted(async () => {
-  void loginDialogWorkflow()
   updateDashboardScale()
   window.addEventListener('resize', updateDashboardScale)
   timer = window.setInterval(() => {

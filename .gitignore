@@ -14,6 +14,7 @@ __pycache__/
 build/
 frontend/.git.codex-backup/
 voice-service/.idea/
+voice-service/models/
 voice-service/voiceprint_models/*.pkl
 voice-service/test_tts.mp3
 voice-gateway/data/*.jsonl

@@ -7,6 +7,8 @@ ASR（语音转文字）服务
 import base64
 import json
 import logging
+import os
+import threading
 import time
 import requests
 import speech_recognition as sr
@@ -14,13 +16,82 @@ from config import (
     ASR_ENGINE, ASR_LANGUAGE, ASR_FALLBACK_ENGINE,
     BAIDU_APP_ID, BAIDU_API_KEY, BAIDU_SECRET_KEY,
     AUDIO_SAMPLE_RATE, ASR_PHRASE_TIME_LIMIT,
-    ASR_DEV_PID, ASR_CORRECTIONS
+    ASR_DEV_PID, ASR_CORRECTIONS,
+    FUNASR_MODEL_DIR, FUNASR_DEVICE, FUNASR_DISABLE_UPDATE
 )
 
 logger = logging.getLogger(__name__)
 
 # 百度 token 缓存（有效期 30 天，提前 1 天刷新）
 _BAIDU_TOKEN_CACHE = {"token": "", "expires_at": 0.0}
+
+# FunASR 模型较大，进程内懒加载并复用，避免每次识别重复加载。
+_FUNASR_MODEL = None
+_FUNASR_MODEL_LOCK = threading.Lock()
+
+
+def _funasr_path(model_dir: str, name: str) -> str:
+    return os.path.join(model_dir, name)
+
+
+def _extract_funasr_text(result) -> str:
+    if not result:
+        return ""
+    if isinstance(result, str):
+        return result.strip()
+    if isinstance(result, dict):
+        return str(result.get("text", "")).strip()
+    if isinstance(result, list):
+        texts = []
+        for item in result:
+            text = _extract_funasr_text(item)
+            if text:
+                texts.append(text)
+        return " ".join(texts).strip()
+    return str(result).strip()
+
+
+def _get_funasr_model():
+    global _FUNASR_MODEL
+    if _FUNASR_MODEL is not None:
+        return _FUNASR_MODEL
+
+    with _FUNASR_MODEL_LOCK:
+        if _FUNASR_MODEL is not None:
+            return _FUNASR_MODEL
+
+        try:
+            from funasr import AutoModel
+        except ImportError as exc:
+            raise sr.RequestError("FunASR 未安装，请先安装 funasr 和 modelscope") from exc
+
+        model_dir = FUNASR_MODEL_DIR
+        logger.info("正在加载 FunASR 本地模型: %s", model_dir)
+        _FUNASR_MODEL = AutoModel(
+            model=_funasr_path(model_dir, "paraformer-zh"),
+            vad_model=_funasr_path(model_dir, "fsmn-vad"),
+            punc_model=_funasr_path(model_dir, "ct-punc"),
+            device=FUNASR_DEVICE,
+            disable_update=FUNASR_DISABLE_UPDATE,
+        )
+        return _FUNASR_MODEL
+
+
+def _funasr_recognize(audio: sr.AudioData) -> str:
+    """使用本地 FunASR 模型识别 16kHz mono int16 PCM。"""
+    t0 = time.time()
+    try:
+        import numpy as np
+    except ImportError as exc:
+        raise sr.RequestError("FunASR 本地识别需要安装 numpy") from exc
+
+    raw_data = audio.get_raw_data(convert_rate=16000, convert_width=2)
+    samples = np.frombuffer(raw_data, dtype=np.int16).astype("float32") / 32768.0
+    model = _get_funasr_model()
+    result = model.generate(input=samples, language="zh")
+    text = _extract_funasr_text(result)
+    logger.info("[perf] FunASR ASR: 音频=%.2fs 总计=%.2fs", len(samples) / 16000, time.time() - t0)
+    return text
 
 
 def _baidu_get_token(api_key: str, secret_key: str) -> str:
@@ -122,6 +193,8 @@ class ASRService:
 
     def _recognize_engine(self, audio: sr.AudioData, engine: str) -> str:
         """使用指定引擎识别"""
+        if engine == "funasr":
+            return _funasr_recognize(audio)
         if engine == "baidu":
             return _baidu_recognize(
                 audio,

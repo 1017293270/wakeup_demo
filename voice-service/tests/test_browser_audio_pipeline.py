@@ -146,6 +146,109 @@ class BrowserAudioPipelineTests(unittest.TestCase):
             pipeline.stop()
             loop.close()
 
+    def test_live_audio_frames_are_ignored_after_wakeup_until_push_to_talk(self):
+        voice_pipeline = importlib.import_module("voice_pipeline")
+        processed = []
+
+        async def send_event(event, data):
+            pass
+
+        def frame(sample, seconds=0.1):
+            sample_count = int(voice_pipeline.SAMPLE_RATE * seconds)
+            return int(sample).to_bytes(2, "little", signed=True) * sample_count
+
+        loop = asyncio.new_event_loop()
+        try:
+            pipeline = voice_pipeline.VoicePipeline(loop, send_event)
+            pipeline._running = True
+            pipeline._state = "waiting_for_ptt"
+            pipeline._process_command_async = lambda audio: processed.append(audio)
+
+            for _ in range(30):
+                pipeline.handle_audio_frame(frame(1200))
+
+            self.assertEqual(processed, [])
+
+            for _ in range(8):
+                pipeline.handle_audio_frame(frame(0))
+
+            self.assertEqual(processed, [])
+        finally:
+            pipeline.stop()
+            loop.close()
+
+    def test_push_to_talk_audio_is_processed_after_wakeup(self):
+        voice_pipeline = importlib.import_module("voice_pipeline")
+        processed = []
+
+        async def send_event(event, data):
+            pass
+
+        loop = asyncio.new_event_loop()
+        try:
+            pipeline = voice_pipeline.VoicePipeline(loop, send_event)
+            pipeline._running = True
+            pipeline._state = "waiting_for_ptt"
+            pipeline._process_command_async = lambda audio: processed.append(audio)
+
+            pipeline.voice_input(b"\x01\x00" * 16000)
+
+            self.assertEqual(len(processed), 1)
+            self.assertEqual(processed[0], b"\x01\x00" * 16000)
+        finally:
+            pipeline.stop()
+            loop.close()
+
+    def test_text_input_is_ignored_while_command_is_processing(self):
+        voice_pipeline = importlib.import_module("voice_pipeline")
+        events = []
+        processed = []
+
+        async def send_event(event, data):
+            events.append((event, data))
+
+        loop = asyncio.new_event_loop()
+        try:
+            pipeline = voice_pipeline.VoicePipeline(loop, send_event)
+            pipeline._running = True
+            pipeline._state = "processing_command"
+            pipeline._processing_command = True
+            pipeline._process_text_async = lambda text: processed.append(text)
+
+            pipeline.text_input("今天多少咨询?")
+            loop.run_until_complete(asyncio.sleep(0.01))
+
+            self.assertEqual(processed, [])
+            self.assertTrue(any(event == "standby" and data.get("reason") == "busy" for event, data in events))
+        finally:
+            pipeline.stop()
+            loop.close()
+
+    def test_push_to_talk_is_ignored_while_command_is_processing(self):
+        voice_pipeline = importlib.import_module("voice_pipeline")
+        events = []
+        processed = []
+
+        async def send_event(event, data):
+            events.append((event, data))
+
+        loop = asyncio.new_event_loop()
+        try:
+            pipeline = voice_pipeline.VoicePipeline(loop, send_event)
+            pipeline._running = True
+            pipeline._state = "processing_command"
+            pipeline._processing_command = True
+            pipeline._process_command_async = lambda audio: processed.append(audio)
+
+            pipeline.voice_input(b"\x01\x00" * 16000)
+            loop.run_until_complete(asyncio.sleep(0.01))
+
+            self.assertEqual(processed, [])
+            self.assertTrue(any(event == "standby" and data.get("reason") == "busy" for event, data in events))
+        finally:
+            pipeline.stop()
+            loop.close()
+
     def test_websocket_binary_frames_are_dispatched_to_pipeline(self):
         ws_server = importlib.import_module("ws_server")
 

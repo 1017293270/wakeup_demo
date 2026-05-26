@@ -7,11 +7,24 @@ interface ApiResponse<T> {
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const token = localStorage.getItem('auth_token')
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
   const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...init
   })
-  const body = (await response.json()) as ApiResponse<T>
+  const rawBody = await response.text()
+  let body: ApiResponse<T>
+  try {
+    body = JSON.parse(rawBody) as ApiResponse<T>
+  } catch {
+    throw new Error(rawBody || `请求失败 (${response.status})`)
+  }
 
   if (!response.ok || !body.success) {
     throw new Error(body.error?.message || '请求失败')

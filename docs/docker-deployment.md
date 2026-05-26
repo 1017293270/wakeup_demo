@@ -46,9 +46,9 @@ VOICE_MYSQL_USER=wakeup_user
 VOICE_MYSQL_PASSWORD=change_me
 VOICE_MYSQL_DATABASE=wakeup_demo
 
-VOICE_BAIDU_APP_ID=change_me
-VOICE_BAIDU_API_KEY=change_me
-VOICE_BAIDU_SECRET_KEY=change_me
+VOICE_ASR_ENGINE=funasr
+VOICE_ASR_MODEL_DIR=/app/models/funasr
+VOICE_FUNASR_DEVICE=cpu
 
 VOICE_WORKFLOW_BASE_URL=http://your-workflow-service/sz
 VOICE_WORKFLOW_USERNAME=
@@ -59,7 +59,20 @@ Use `VOICE_MYSQL_HOST=host.docker.internal` when MySQL runs on the same server a
 
 Do not commit `.env` to Git.
 
-## 3. Start Containers
+## 3. Prepare Local ASR Models
+
+Put the FunASR model files on the server before starting `voice-service`:
+
+```text
+voice-service/models/funasr/
+  paraformer-zh/
+  fsmn-vad/
+  ct-punc/
+```
+
+`docker-compose.yml` mounts this directory into the container as `/app/models/funasr`.
+
+## 4. Start Containers
 
 ```bash
 docker compose up -d --build
@@ -80,7 +93,7 @@ Open:
 http://server-ip:9080
 ```
 
-## 4. HTTPS and WebSocket
+## 5. HTTPS and WebSocket
 
 Browser microphone access requires HTTPS except on localhost.
 
@@ -111,7 +124,7 @@ After changing `VITE_VOICE_WS_URL`, rebuild the frontend:
 docker compose up -d --build frontend
 ```
 
-## 5. Common Commands
+## 6. Common Commands
 
 Restart:
 

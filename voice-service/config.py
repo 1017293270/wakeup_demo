@@ -7,6 +7,27 @@
 
 import os
 
+
+def _load_project_env():
+    """Load local .env values for direct Python runs without adding a dependency."""
+    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    if not os.path.exists(env_path):
+        return
+
+    with open(env_path, "r", encoding="utf-8") as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and (value or key not in os.environ):
+                os.environ[key] = value
+
+
+_load_project_env()
+
 # ==================== WebSocket ====================
 WS_HOST = "127.0.0.1"
 WS_PORT = 8766
@@ -27,14 +48,26 @@ WORKFLOW_PASSWORD = os.getenv("VOICE_WORKFLOW_PASSWORD", "")
 GREETING_TEXT = "你好，我是小智"
 
 # ==================== ASR 配置 ====================
-# 可选: "google" | "baidu"
+# 可选: "funasr" | "google" | "baidu"
+# - funasr: 本地离线中文 ASR，默认推荐，模型放在 VOICE_ASR_MODEL_DIR
 # - google: 无需密钥，直接可用，可能需要科学上网
 # - baidu: 需要填写下方百度密钥，适合国内网络环境
-ASR_ENGINE = "baidu"
+ASR_ENGINE = os.getenv("VOICE_ASR_ENGINE", "funasr").lower()
 # 当主引擎返回空时，自动尝试备用引擎
-# 设为 "" 禁用备用；设为 "google" 或 "baidu"
-ASR_FALLBACK_ENGINE = "google"
+# 设为 "" 禁用备用；设为 "google"、"baidu" 或 "funasr"
+ASR_FALLBACK_ENGINE = os.getenv("VOICE_ASR_FALLBACK_ENGINE", "").lower()
 ASR_LANGUAGE = "zh-CN"
+
+# FunASR 本地模型目录。默认按 voice-service/models/funasr 存放：
+#   paraformer-zh/
+#   fsmn-vad/
+#   ct-punc/
+FUNASR_MODEL_DIR = os.getenv(
+    "VOICE_ASR_MODEL_DIR",
+    os.path.join(os.path.dirname(__file__), "models", "funasr"),
+)
+FUNASR_DEVICE = os.getenv("VOICE_FUNASR_DEVICE", "cpu")
+FUNASR_DISABLE_UPDATE = os.getenv("VOICE_FUNASR_DISABLE_UPDATE", "true").lower() == "true"
 # 百度 ASR 模型 PID
 #   1537: 普通话(纯中文识别) — 通用免费模型
 ASR_DEV_PID = 1537

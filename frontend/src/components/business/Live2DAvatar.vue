@@ -55,8 +55,8 @@ async function initLive2D() {
     model.x = width / 2
     model.y = height / 2
 
-    const baseScale = Math.min(width / 1120, height / 1220)
-    model.scale.set(Math.max(0.16, Math.min(0.28, baseScale)))
+    const baseScale = Math.min(width / 1120, height / 1220) * 0.85
+    model.scale.set(Math.max(0.10, Math.min(0.28, baseScale)))
 
     app.stage.addChild(model)
     console.log('[Live2D] Robot loaded, size:', model.width.toFixed(0), 'x', model.height.toFixed(0))

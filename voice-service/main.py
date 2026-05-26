@@ -12,10 +12,11 @@
 import logging
 import sys
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from config import WS_PORT
+from config import ASR_ENGINE, WS_PORT
 from http_api import router as http_router
 from ws_server import voice_server
 
@@ -44,6 +45,20 @@ app.add_middleware(
 app.include_router(http_router)
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error("unhandled request error: %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "data": None,
+            "error": {"code": "INTERNAL_ERROR", "message": "服务暂时不可用，请稍后重试", "details": {}},
+            "requestId": "",
+        },
+    )
+
+
 # WebSocket 语音管道端点（兼容新旧路径）
 @app.websocket("/ws")
 @app.websocket("/api/v1/voice/ws")
@@ -58,6 +73,15 @@ def check_dependencies():
         import speech_recognition  # noqa
     except ImportError:
         missing.append("SpeechRecognition")
+    if ASR_ENGINE == "funasr":
+        try:
+            import funasr  # noqa
+        except ImportError:
+            missing.append("funasr")
+        try:
+            import numpy  # noqa
+        except ImportError:
+            missing.append("numpy")
     try:
         import edge_tts  # noqa
     except ImportError:

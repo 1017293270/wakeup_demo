@@ -97,6 +97,11 @@
   min-height: 0;
 }
 
+.command-layout--center {
+  grid-template-columns: 1fr;
+  place-items: center;
+}
+
 .dashboard-rail {
   display: grid;
   grid-template-rows: 1.08fr 0.92fr 0.72fr;
@@ -1132,6 +1137,25 @@
 
 .screen-link:hover .settings-icon {
   transform: rotate(45deg);
+}
+
+.screen-link--chat {
+  border-color: rgba(124, 255, 200, 0.4);
+  background: rgba(124, 255, 200, 0.12);
+}
+
+.screen-link--chat:hover {
+  border-color: rgba(124, 255, 200, 0.7);
+  background: rgba(124, 255, 200, 0.2);
+}
+
+.chat-icon {
+  color: var(--color-emerald);
+}
+
+.command-stage--centered {
+  max-width: 780px;
+  width: 100%;
 }
 
 

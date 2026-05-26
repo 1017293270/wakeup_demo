@@ -6,5 +6,18 @@ import App from './App.vue'
 import router from './router'
 import '../styles/theme.css'
 import '../styles/dashboard.css'
+import '../styles/auth.css'
+import '../styles/chat.css'
 
-createApp(App).use(createPinia()).use(router).use(Antd).mount('#app')
+const app = createApp(App)
+const pinia = createPinia()
+
+app.use(pinia)
+app.use(router)
+app.use(Antd)
+
+import { useAuthStore } from '../stores/authStore'
+const authStore = useAuthStore()
+authStore.initialize().finally(() => {
+  app.mount('#app')
+})

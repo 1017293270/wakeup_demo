@@ -11,11 +11,13 @@ export default defineConfig({
       '/ws': {
         target: 'ws://127.0.0.1:8766',
         ws: true,
-        changeOrigin: true
+        changeOrigin: true,
+        rewrite: () => '/api/v1/voice/ws'
       },
       '/api': {
         target: 'http://127.0.0.1:8766',
-        changeOrigin: true
+        changeOrigin: true,
+        ws: true
       }
     }
   }

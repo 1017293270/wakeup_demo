@@ -17,8 +17,10 @@ websockets>=11.0.3
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 
-# 语音识别（支持 Google Web Speech / 百度语音）
+# 语音识别（支持 FunASR 本地模型 / Google Web Speech / 百度语音）
 SpeechRecognition>=3.10.0
+funasr>=1.2.6
+modelscope>=1.17.1
 
 # 可选：旧版服务器本机麦克风采集依赖。线上浏览器音频流模式不需要安装 PyAudio。
 # pyaudio>=0.2.14

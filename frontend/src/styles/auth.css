@@ -1,0 +1,149 @@
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(125deg, rgba(247, 200, 115, 0.12), transparent 28%),
+    linear-gradient(235deg, rgba(86, 240, 255, 0.14), transparent 30%),
+    linear-gradient(145deg, #070a0f 0%, #101723 46%, #070a0f 100%);
+}
+
+.auth-card {
+  width: 420px;
+  max-width: 92vw;
+  padding: 36px 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-panel);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px);
+}
+
+.auth-card--register {
+  width: 460px;
+}
+
+.auth-header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.auth-header h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #ffffff;
+}
+
+.auth-header p {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.auth-captcha-img {
+  width: 100%;
+  height: 40px;
+  border: 1px solid rgba(219, 231, 255, 0.16);
+  border-radius: 6px;
+  cursor: pointer;
+  object-fit: contain;
+  background: #f0f0f0;
+}
+
+.auth-captcha-placeholder {
+  width: 100%;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(219, 231, 255, 0.24);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--color-muted);
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: border-color 150ms;
+}
+
+.auth-captcha-placeholder:hover {
+  border-color: var(--color-cyan);
+  color: var(--color-cyan);
+}
+
+.auth-password-rules {
+  margin: -16px 0 16px;
+  display: grid;
+  gap: 3px;
+}
+
+.auth-password-rules__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.auth-password-rules__item--pass {
+  color: var(--color-emerald);
+}
+
+.auth-password-rules__item--fail {
+  color: var(--color-muted);
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 16px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.auth-footer a {
+  color: var(--color-cyan);
+  text-decoration: none;
+}
+
+.auth-footer a:hover {
+  text-decoration: underline;
+}
+
+/* Ant Design overrides for auth pages */
+.auth-page .ant-form-item-label > label {
+  color: #dbe7ff !important;
+}
+
+.auth-page .ant-input,
+.auth-page .ant-input-affix-wrapper {
+  background: rgba(11, 16, 32, 0.78) !important;
+  border-color: rgba(168, 179, 199, 0.28) !important;
+  color: #ffffff !important;
+}
+
+.auth-page .ant-input::placeholder {
+  color: rgba(219, 231, 255, 0.5) !important;
+}
+
+.auth-page .ant-input-password-icon {
+  color: rgba(219, 231, 255, 0.5) !important;
+}
+
+.auth-page .ant-btn-primary {
+  border-color: rgba(86, 240, 255, 0.52) !important;
+  background: linear-gradient(135deg, rgba(86, 240, 255, 0.3), rgba(247, 200, 115, 0.16)) !important;
+}
+
+.auth-page .ant-btn-primary:hover {
+  border-color: rgba(86, 240, 255, 0.78) !important;
+  background: linear-gradient(135deg, rgba(86, 240, 255, 0.38), rgba(247, 200, 115, 0.22)) !important;
+}
+
+.auth-page .ant-alert-error {
+  background: rgba(255, 107, 130, 0.08) !important;
+  border-color: rgba(255, 107, 130, 0.3) !important;
+}
+
+.auth-page .ant-message-notice-content {
+  background: rgba(8, 14, 24, 0.94) !important;
+  color: #ffffff !important;
+}

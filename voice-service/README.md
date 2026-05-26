@@ -30,12 +30,29 @@
 
    > 注意：Windows环境如果安装pyaudio失败，可以先下载预编译包：https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio
 
-2. **启动完整服务**： 
+2. **准备 FunASR 本地模型**：
+   ```text
+   voice-service/models/funasr/
+     paraformer-zh/
+     fsmn-vad/
+     ct-punc/
+   ```
+
+   默认配置会从上面的目录加载模型。Docker 部署时该目录会挂载到容器内 `/app/models/funasr`。
+
+3. **配置本地 ASR**：
+   ```bash
+   VOICE_ASR_ENGINE=funasr
+   VOICE_ASR_MODEL_DIR=./models/funasr
+   VOICE_FUNASR_DEVICE=cpu
+   ```
+
+4. **启动完整服务**：
    ```bash
    python main.py
    ```
 
-   首次启动会自动下载所有模型文件，需要等待几分钟。
+   如果模型目录不存在或依赖缺失，服务会记录明确错误并返回空识别结果，不会再默认调用百度 ASR。
 
 ## 📋 接口协议
 ### 前端→后端指令
@@ -80,7 +97,7 @@
 ## 🔧 配置说明
 - **唤醒词修改**：默认使用"小聚小聚"，需要训练自定义唤醒词模型替换现有模型
 - **端口修改**：修改main.py中的WS_PORT变量即可
-- **模型切换**：可以替换为更大的模型提升准确率
+- **模型切换**：默认使用 FunASR 本地 `paraformer-zh`，可通过 `VOICE_ASR_MODEL_DIR` 指向其他模型目录
 - **灵敏度调整**：修改WAKE_WORD_THRESHOLD调整唤醒灵敏度，值越高越不容易误唤醒
 
 ## 📦 打包部署

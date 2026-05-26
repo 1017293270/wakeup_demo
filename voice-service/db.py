@@ -55,6 +55,40 @@ class VoiceHistory(Base):
     duration = Column(Integer, default=0, comment="交互时长(秒)")
     create_time = Column(DateTime, default=datetime.now, comment="创建时间")
 
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(String(64), unique=True, index=True, nullable=False)
+    phone = Column(String(32), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    name = Column(String(100), default="")
+    created_at = Column(DateTime, default=datetime.now)
+
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    session_id = Column(String(64), index=True, nullable=False)
+    user_id = Column(String(64), index=True, nullable=False)
+    title = Column(String(120), default="")
+    created_at = Column(DateTime, default=datetime.now)
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    message_id = Column(String(64), unique=True, index=True, nullable=False)
+    session_id = Column(String(64), index=True, nullable=False)
+    user_id = Column(String(64), index=True, nullable=False)
+    role = Column(String(20), nullable=False)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+
+
 # 创建表（如果不存在）
 def create_tables():
     Base.metadata.create_all(bind=engine)

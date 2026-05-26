@@ -21,6 +21,11 @@ WAKE_CHUNK_BYTES = SAMPLE_RATE * SAMPLE_WIDTH * 2
 COMMAND_CHUNK_BYTES = SAMPLE_RATE * SAMPLE_WIDTH * 3
 MAX_WAKE_BUFFER_BYTES = SAMPLE_RATE * SAMPLE_WIDTH * 8
 MAX_COMMAND_BUFFER_BYTES = SAMPLE_RATE * SAMPLE_WIDTH * 10
+COMMAND_SPEECH_RMS_THRESHOLD = 300
+COMMAND_TRAILING_SILENCE_BYTES = int(SAMPLE_RATE * SAMPLE_WIDTH * 0.8)
+COMMAND_PRE_SPEECH_BYTES = int(SAMPLE_RATE * SAMPLE_WIDTH * 0.3)
+COMMAND_MIN_AUDIO_BYTES = int(SAMPLE_RATE * SAMPLE_WIDTH * 0.4)
+DIALOG_EMPTY_ANSWER_MESSAGE = "问数服务暂时没有返回可展示内容，请稍后重试。"
 
 
 class DialogClient:
@@ -49,13 +54,7 @@ class DialogClient:
             )
             response.raise_for_status()
             data = response.json()
-            token = (
-                data.get("token")
-                or data.get("accessToken")
-                or data.get("result", {}).get("token")
-                or data.get("data", {}).get("token")
-                or ""
-            )
+            token = self._extract_token(data)
             if not token:
                 logger.warning("Dialog login response did not include a token")
                 return ""
@@ -82,26 +81,7 @@ class DialogClient:
             )
             response.raise_for_status()
             data = response.json()
-            answer = (
-                data.get("message")
-                or data.get("result")
-                or data.get("data")
-                or data.get("content")
-                or data.get("answer")
-                or data.get("reply")
-                or data.get("text")
-                or data.get("output")
-                or ""
-            )
-            if isinstance(answer, dict):
-                answer = (
-                    answer.get("message")
-                    or answer.get("content")
-                    or answer.get("answer")
-                    or answer.get("text")
-                    or str(answer)
-                )
-            return str(answer) if answer else ""
+            return self._extract_answer(data)
         except requests.HTTPError as exc:
             if response.status_code in (401, 403) and not retried:
                 with self._lock:
@@ -112,6 +92,38 @@ class DialogClient:
         except Exception as exc:
             logger.warning("Dialog service request error: %s", exc)
             return ""
+
+    @staticmethod
+    def _extract_token(data: dict) -> str:
+        candidates = [
+            data.get("token"),
+            data.get("accessToken"),
+            data.get("result", {}).get("token") if isinstance(data.get("result"), dict) else None,
+            data.get("result", {}).get("accessToken") if isinstance(data.get("result"), dict) else None,
+            data.get("data", {}).get("token") if isinstance(data.get("data"), dict) else None,
+            data.get("data", {}).get("accessToken") if isinstance(data.get("data"), dict) else None,
+        ]
+        return next((str(item) for item in candidates if item), "")
+
+    @classmethod
+    def _extract_answer(cls, data) -> str:
+        if data is None:
+            return ""
+        if isinstance(data, str):
+            return data
+        if isinstance(data, (int, float, bool)):
+            return str(data)
+        if isinstance(data, list):
+            parts = [cls._extract_answer(item) for item in data]
+            return "\n".join(part for part in parts if part)
+        if not isinstance(data, dict):
+            return str(data)
+
+        for key in ("message", "result", "data", "answer", "reply", "content", "text", "output"):
+            answer = cls._extract_answer(data.get(key))
+            if answer:
+                return answer
+        return ""
 
 
 class VoicePipeline:
@@ -127,6 +139,8 @@ class VoicePipeline:
         self._silence_timer: threading.Timer | None = None
         self._wake_buffer = bytearray()
         self._command_buffer = bytearray()
+        self._command_has_speech = False
+        self._command_silence_bytes = 0
         self._recognizing_wake = False
         self._processing_command = False
         self._cancel_processing = False
@@ -158,7 +172,8 @@ class VoicePipeline:
         with self._lock:
             self._state = "idle"
             self._wake_buffer.clear()
-            self._command_buffer.clear()
+            self._reset_command_capture()
+            self._processing_command = False
         logger.info("Voice pipeline stopped")
 
     def manual_wakeup(self):
@@ -168,7 +183,7 @@ class VoicePipeline:
                 return
             self._state = "greeting"
             self._wake_buffer.clear()
-            self._command_buffer.clear()
+            self._reset_command_capture()
         self._start_silence_timer()
         self._async_send("wakeup", {"wakeWord": self.WAKE_WORD, "confidence": 1.0})
         self._do_greeting_sequence()
@@ -178,8 +193,9 @@ class VoicePipeline:
         with self._lock:
             self._state = "idle"
             self._wake_buffer.clear()
-            self._command_buffer.clear()
+            self._reset_command_capture()
             self._cancel_processing = True
+            self._processing_command = False
         self._async_send("standby", {"reason": "cancelled"})
 
     def handle_audio_frame(self, frame: bytes):
@@ -195,8 +211,6 @@ class VoicePipeline:
 
         if state == "idle":
             self._handle_wake_frame(frame)
-        elif state == "waiting_for_ptt":
-            self._handle_command_frame(frame)
 
     def text_input(self, text: str):
         text = text.strip()
@@ -204,6 +218,9 @@ class VoicePipeline:
             self._async_send("error", {"message": "text cannot be empty"})
             return
         with self._lock:
+            if self._processing_command:
+                self._async_send("standby", {"reason": "busy", "hint": "previous question is still processing"})
+                return
             if self._state == "idle":
                 self._state = "processing_command"
                 self._async_send("wakeup", {"wakeWord": self.WAKE_WORD, "confidence": 1.0, "hint": "text input"})
@@ -212,16 +229,21 @@ class VoicePipeline:
                 self._cancel_processing = True
             else:
                 return
+            self._processing_command = True
         self._cancel_silence_timer()
         self._process_text_async(text)
 
     def voice_input(self, audio_bytes: bytes):
         with self._lock:
+            if self._processing_command:
+                self._async_send("standby", {"reason": "busy", "hint": "previous question is still processing"})
+                return
             if self._state not in {"waiting_for_ptt", "processing_command"}:
                 logger.warning("voice_input ignored in state=%s", self._state)
                 return
             self._state = "processing_command"
             self._cancel_processing = False
+            self._processing_command = True
         self._cancel_silence_timer()
         self._process_command_async(bytes(audio_bytes))
 
@@ -256,22 +278,53 @@ class VoicePipeline:
             return
 
         self._command_buffer.extend(frame)
-        if len(self._command_buffer) > MAX_COMMAND_BUFFER_BYTES:
-            self._command_buffer.clear()
-            self._async_send("standby", {"reason": "command_too_long", "hint": "please speak a shorter command"})
+        is_speech = self._frame_rms(frame) >= COMMAND_SPEECH_RMS_THRESHOLD
+
+        if not self._command_has_speech:
+            if is_speech:
+                self._command_has_speech = True
+                self._command_silence_bytes = 0
+            elif len(self._command_buffer) > COMMAND_PRE_SPEECH_BYTES:
+                del self._command_buffer[: len(self._command_buffer) - COMMAND_PRE_SPEECH_BYTES]
             return
-        if len(self._command_buffer) < COMMAND_CHUNK_BYTES:
+
+        if is_speech:
+            self._command_silence_bytes = 0
+        else:
+            self._command_silence_bytes += len(frame)
+
+        if len(self._command_buffer) > MAX_COMMAND_BUFFER_BYTES:
+            self._finish_command_capture("max_duration")
+            return
+
+        if self._command_silence_bytes < COMMAND_TRAILING_SILENCE_BYTES:
+            return
+
+        self._finish_command_capture("trailing_silence")
+
+    def _finish_command_capture(self, reason: str):
+        if len(self._command_buffer) < COMMAND_MIN_AUDIO_BYTES:
+            logger.info("[command] ignored short audio: reason=%s bytes=%s", reason, len(self._command_buffer))
+            self._reset_command_capture()
             return
 
         audio_bytes = bytes(self._command_buffer)
-        self._command_buffer.clear()
+        duration = len(audio_bytes) / SAMPLE_RATE / SAMPLE_WIDTH
+        self._reset_command_capture()
         with self._lock:
             if self._state != "waiting_for_ptt":
                 return
             self._state = "processing_command"
             self._cancel_processing = False
+            self._processing_command = True
+        logger.info("[command] ASR trigger: reason=%s audio=%.2fs", reason, duration)
         self._cancel_silence_timer()
         self._process_command_async(audio_bytes)
+
+    def _reset_command_capture(self):
+        self._command_buffer.clear()
+        self._command_has_speech = False
+        self._command_silence_bytes = 0
 
     def _trigger_wakeup(self, recognized_text: str):
         with self._lock:
@@ -279,7 +332,7 @@ class VoicePipeline:
                 return
             self._state = "greeting"
             self._wake_buffer.clear()
-            self._command_buffer.clear()
+            self._reset_command_capture()
         self._start_silence_timer()
         self._async_send(
             "wakeup",
@@ -306,19 +359,19 @@ class VoicePipeline:
         def worker():
             try:
                 self._async_send("ttsStatus", {"status": "start", "hint": "thinking"})
-                answer = self.dialog.ask(text) or f'我听到了"{text}"，但暂时没有合适的回答。'
+                answer = self._ask_dialog_or_service_message(text)
                 self._async_send("dialogResult", {"question": text, "answer": answer, "timestamp": int(time.time() * 1000)})
                 self._say_and_return(answer, instruction_text=text)
             except Exception as exc:
                 logger.error("text input failed: %s", exc, exc_info=True)
                 self._async_send("error", {"message": f"text input failed: {exc}"})
                 self._return_to_waiting()
+            finally:
+                self._processing_command = False
 
         threading.Thread(target=worker, daemon=True).start()
 
     def _process_command_async(self, audio_bytes: bytes):
-        self._processing_command = True
-
         def worker():
             text = ""
             try:
@@ -332,7 +385,7 @@ class VoicePipeline:
 
                 self._async_send("asrResult", {"text": text, "isFinal": True, "timestamp": int(time.time() * 1000)})
                 self._async_send("ttsStatus", {"status": "start", "hint": "thinking"})
-                answer = self.dialog.ask(text) or f'我听到了"{text}"，但暂时没有合适的回答。'
+                answer = self._ask_dialog_or_service_message(text)
                 self._async_send("dialogResult", {"question": text, "answer": answer, "timestamp": int(time.time() * 1000)})
                 self._say_and_return(answer, instruction_text=text)
             except Exception as exc:
@@ -344,9 +397,28 @@ class VoicePipeline:
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _ask_dialog_or_service_message(self, text: str) -> str:
+        answer = self.dialog.ask(text)
+        if answer:
+            return answer
+        logger.warning("Dialog service returned empty answer for question=%r", text)
+        return DIALOG_EMPTY_ANSWER_MESSAGE
+
     def _recognize_pcm(self, audio_bytes: bytes) -> str:
         audio = sr.AudioData(audio_bytes, sample_rate=SAMPLE_RATE, sample_width=SAMPLE_WIDTH)
         return self.asr.recognize(audio)
+
+    @staticmethod
+    def _frame_rms(frame: bytes) -> float:
+        if len(frame) < SAMPLE_WIDTH:
+            return 0.0
+
+        total = 0
+        sample_count = len(frame) // SAMPLE_WIDTH
+        for offset in range(0, sample_count * SAMPLE_WIDTH, SAMPLE_WIDTH):
+            sample = int.from_bytes(frame[offset : offset + SAMPLE_WIDTH], "little", signed=True)
+            total += sample * sample
+        return (total / sample_count) ** 0.5
 
     def _say(self, text: str, return_to_waiting: bool = True) -> None:
         audio = ""
@@ -417,7 +489,7 @@ class VoicePipeline:
                 return
             self._state = "idle"
             self._wake_buffer.clear()
-            self._command_buffer.clear()
+            self._reset_command_capture()
         self._async_send("standby", {"reason": "silence_timeout"})
 
     def _async_send(self, event: str, data: dict):
